@@ -1,0 +1,5 @@
+{
+    "name": "config1",
+    "secret": "thisissecret",
+    "host": "localhost"
+}
