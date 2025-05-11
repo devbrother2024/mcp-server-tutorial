@@ -63,7 +63,7 @@ const server = new Server(
     }
 )
 
-// echo 도구 핸들러
+// 도구 핸들러
 server.setRequestHandler(ListToolsRequestSchema, async () => {
     return {
         tools: [
