@@ -1,12 +1,17 @@
 import { Server } from '@modelcontextprotocol/sdk/server/index.js'
 import {
     CallToolRequestSchema,
+    CreateMessageRequest,
+    CreateMessageResultSchema,
     GetPromptRequestSchema,
     ListPromptsRequestSchema,
     ListResourcesRequestSchema,
     ListResourceTemplatesRequestSchema,
+    ListRootsRequest,
+    ListRootsResultSchema,
     ListToolsRequestSchema,
     ReadResourceRequestSchema,
+    RootsListChangedNotificationSchema,
     Tool
 } from '@modelcontextprotocol/sdk/types.js'
 import { z } from 'zod'
@@ -21,16 +26,22 @@ const EchoSchema = z.object({
     message: z.string().describe('Echo할 메시지')
 })
 const RandomDuckSchema = z.object({
-    type: z.enum(['jpg', 'gif'])
+    type: z.enum(['jpg', 'gif']).describe('이미지 타입')
 })
 const ReviewCodePromptSchema = z.object({
-    code: z.string()
+    code: z.string().describe('리뷰할 코드')
 })
+const SamplingSchema = z.object({
+    prompt: z.string().describe('샘플링할 프롬프트')
+})
+const ListRootDirSchema = z.object({})
 
 // 도구 이름 enum
 enum ToolName {
     ECHO = 'echo',
-    RANDOM_DUCK = 'random-duck'
+    RANDOM_DUCK = 'random-duck',
+    SAMPLING = 'sampling',
+    LIST_ROOT_DIR = 'list-root-dir'
 }
 // 프롬프트 이름 enum
 enum PromptName {
@@ -47,9 +58,7 @@ const server = new Server(
         capabilities: {
             prompts: {},
             resources: {},
-            tools: {},
-            completions: {}
-            // logging: {}
+            tools: {}
         }
     }
 )
@@ -68,6 +77,20 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
                 description: '랜덤 오리 이미지를 반환',
                 inputSchema: zodToJsonSchema(
                     RandomDuckSchema
+                ) as Tool['inputSchema']
+            },
+            {
+                name: ToolName.SAMPLING,
+                description: '샘플링 도구',
+                inputSchema: zodToJsonSchema(
+                    SamplingSchema
+                ) as Tool['inputSchema']
+            },
+            {
+                name: ToolName.LIST_ROOT_DIR,
+                description: '루트 디렉토리 목록 조회',
+                inputSchema: zodToJsonSchema(
+                    ListRootDirSchema
                 ) as Tool['inputSchema']
             }
         ]
@@ -111,6 +134,55 @@ server.setRequestHandler(CallToolRequestSchema, async request => {
             ]
         }
     }
+    if (name === ToolName.SAMPLING) {
+        const validatedArgs = SamplingSchema.parse(args)
+
+        const request: CreateMessageRequest = {
+            method: 'sampling/createMessage',
+            params: {
+                messages: [
+                    {
+                        role: 'user',
+                        content: {
+                            type: 'text',
+                            text: validatedArgs.prompt
+                        }
+                    }
+                ],
+                systemPrompt: 'You are a helpful assistant.',
+                maxTokens: 100,
+                temperature: 0.7,
+                includeContext: 'thisServer'
+            }
+        }
+
+        const result = await server.request(request, CreateMessageResultSchema)
+
+        return {
+            content: [
+                {
+                    type: 'text',
+                    text: JSON.stringify(result)
+                }
+            ]
+        }
+    }
+    if (name === ToolName.LIST_ROOT_DIR) {
+        const request: ListRootsRequest = {
+            method: 'roots/list',
+            params: {}
+        }
+
+        const response = await server.request(request, ListRootsResultSchema)
+        return {
+            content: [
+                {
+                    type: 'text',
+                    text: JSON.stringify(response)
+                }
+            ]
+        }
+    }
     throw new Error(`Unknown tool: ${name}`)
 })
 
@@ -136,6 +208,7 @@ server.setRequestHandler(ListPromptsRequestSchema, async () => {
 server.setRequestHandler(GetPromptRequestSchema, async request => {
     const { name, arguments: args } = request.params
     if (name === PromptName.REVIEW_CODE) {
+        ReviewCodePromptSchema.parse(args)
         return {
             messages: [
                 {
@@ -205,6 +278,16 @@ server.setRequestHandler(ReadResourceRequestSchema, async request => {
     }
     throw new Error(`Unknown resource: ${uri}`)
 })
+
+// roots/list_changed 알림 핸들러 등록
+server.setNotificationHandler(
+    RootsListChangedNotificationSchema,
+    async params => {
+        // roots 변경 알림을 받으면 콘솔에 출력
+        console.error('[알림] 클라이언트에서 roots가 변경되었습니다:', params)
+        // 필요시 추가 동작 구현 가능
+    }
+)
 
 const transport = new StdioServerTransport()
 server.connect(transport)
