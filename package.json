@@ -1,9 +1,8 @@
 {
-    "name": "high-level-mcp-server",
+    "name": "mcp-server-tutorial",
     "version": "1.0.0",
-    "main": "index.js",
     "scripts": {
-        "build": "tsc && shx chmod +x dist/index.js"
+        "build": "tsc && shx chmod +x dist/*.js"
     },
     "keywords": [],
     "author": "",
